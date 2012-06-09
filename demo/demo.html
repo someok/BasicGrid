@@ -1,0 +1,68 @@
+<!doctype html>
+<!--[if lt IE 7]> <html class="no-js lt-ie9 lt-ie8 lt-ie7 ie6"> <![endif]-->
+<!--[if IE 7]>    <html class="no-js lt-ie9 lt-ie8 ie7"> <![endif]-->
+<!--[if IE 8]>    <html class="no-js lt-ie9 ie8"> <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js"> <!--<![endif]-->
+<head>
+
+    <script>
+      document.documentElement.className=document.documentElement.className.replace('no-js','js');
+    </script>
+
+    <meta charset="utf-8">
+    <title>BasicGrid Demo</title>
+
+    <link href="../css/style.css" rel="stylesheet">
+
+</head>
+
+<body>
+
+  <table id="demo">
+
+  </table>
+
+
+  <script src="../lib/jquery-1.7.2.js"></script>
+  <script src="../src/basicgrid.js"></script>
+
+  <script>
+    $(function() {
+      var $demo = $('#demo');
+
+
+      var staticData = [];
+      for (var i = 0; i < 20; i++) {
+        var model = {};
+        model['id'] = i;
+        for (var j = 1; j <= 5; j++) {
+          model['col' + j] = 'Col-' + i + '-' + j;
+        }
+        staticData[i] = model;
+      }
+      console.log(staticData);
+
+      var grid = $demo.basicGrid({
+        data: staticData,
+        //rowNumCol: false,
+        colModel: [
+          {text: '列1', index: 'col1', headCls: 'abc', headStyle: 'background-color: red'},
+          {text: '列2', index: 'col2', hidden: true},
+          {text: '列3', index: 'col3', formatter: function(tableData, rowData, index, colData) {
+            console.log(index);
+            console.log(rowData);
+              return '<b>' + colData + '</b>';
+          }},
+          {text: '列4', index: 'col4'},
+          {text: '列5', index: 'col5'}
+        ]
+      });
+      //console.log(grid[0].tableId);
+
+      // $demo.basicGrid('reload');
+      console.log($demo.basicGrid('version'));
+    })
+
+  </script>
+</body>
+</html>

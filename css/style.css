@@ -1,0 +1,21 @@
+.basicGrid {
+	border: 1px solid #ccc;
+}
+.basicGrid thead .rownum {
+	background-color: #eee;
+}
+.basicGrid tbody .rownum {
+	background-color: #eee;
+	text-align: right;
+	padding-right: 5px;
+}
+.basicGrid .empty-tbody {
+	text-align: center;
+}
+
+/**
+ * 交叉行颜色
+ */
+.basicGrid .alt-row-color {
+
+}
