@@ -145,6 +145,8 @@
 			//   formatter: function格式，参数为： (tableData, rowData, index, cellData)
 			colModel: [],
 
+			formEl: '',	// TODO: 跟表单绑定
+
 			// json数据的key定义
 			keys: {
 				// id字段名，默认为id
