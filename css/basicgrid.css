@@ -1,3 +1,10 @@
+/**
+ * basicGrid 会提供的一些css，如果需要定义表格，可以在这儿下手
+ *
+ * $Id$
+ *
+ */
+
 .basicGrid {
 	border: 1px solid #ccc;
 }
@@ -47,14 +54,20 @@
 
 
 /**
- * pager
+ * pagebar
  */
-.basicGridPager {
+.basicGridPagebar {
 	border: 1px solid red;
 }
-.basicGridPager .pager-info {
+.basicGridPagebar .pagerinfo {
 	float: left;
 }
-.basicGridPager .pager-numbers {
+.basicGridPagebar .pagination {
 	float: right;
+}
+/**
+ * 可以用来显示个菊花
+ */
+.basicGridPagebar .pagination .page-loading {
+
 }

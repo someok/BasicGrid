@@ -10,21 +10,34 @@
     </script>
 
     <meta charset="utf-8">
-    <title>BasicGrid Demo</title>
+    <title>BasicGrid Demo - Static Data</title>
 
-    <link href="../css/style.css" rel="stylesheet">
+    <!-- <link href="../css/basicgrid.css" rel="stylesheet"> -->
+    <link href="../css/bootstrap.css" rel="stylesheet">
+
+    <style type="text/css">
+      /*.table-wrap: {*/
+      #demo {
+        width: 80%;
+        margin: 20px auto;
+
+      }
+    </style>
 
 </head>
 
 <body>
 
-  <table id="demo">
+  <div class="table-wrap">
 
-  </table>
+    <table id="demo" class="table table-striped table-bordered table-condensed">
 
-  <button id="clear">Clear Body</button>
-  <button id="reload">Reload</button>
+    </table>
 
+    <button id="clear">Clear Body</button>
+    <button id="reload">Reload</button>
+
+  </div>
 
   <script src="../lib/jquery-1.7.2.js"></script>
   <script src="../src/basicgrid.js"></script>
@@ -33,24 +46,13 @@
     $(function() {
       var $demo = $('#demo');
 
-      /*
-      var staticData = [];
-      for (var i = 0; i < 20; i++) {
-        var model = {};
-        model['id'] = i;
-        for (var j = 1; j <= 5; j++) {
-          model['col' + j] = 'Col-' + i + '-' + j;
-        }
-        staticData[i] = model;
-      }
-      console.log(staticData);
-       */
 
       var grid = $demo.basicGrid({
         //data: staticData,
-        //url: 'demo1.json',
-        url: 'http://localhost:8080/base/admin/security/authority-grid/4028b88137c3dd9c0137c3dda23e0080'
-        // hidden: true,
+        url: 'list-data.json',
+        //hidden: true,
+
+        pagination: false,
 
         //rowNumCol: false,
         colModel: [
@@ -72,7 +74,8 @@
       $('#clear').click(function() {
         console.log(this);
         // $('#demo').remove('tbody');
-        $('tbody', '#demo').remove();
+        $('#demo').empty();
+        $('#demo').hide();
         console.log('remove...');
       });
 
@@ -80,8 +83,21 @@
         $demo.basicGrid('reload');
       });
       console.log($demo.basicGrid('version'));
-      //console.log($demo.basicGrid('settings'));
-      console.log($demo.basicGrid('addExtraParams', {aaa: 1, bbb: 2}));
+
+      $('#demo').bind('headClick', function(e, model, el) {
+        console.log(e);
+        console.log(model);
+        console.log(el);
+      });
+
+      $('#demo').bind('cellClick', function(e, model, rowsData, rowData, cellData, el) {
+        console.log(e);
+        console.log(model);
+        console.log(rowsData);
+        console.log(rowData);
+        console.log(cellData);
+        console.log(el);
+      });
       //console.log($demo.basicGrid('showTable'));
     })
 

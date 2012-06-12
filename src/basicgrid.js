@@ -1,5 +1,35 @@
 /**
- * $Id$
+ * ChangeLog：
+ * ====================================
+ *
+ * 1.0.0:
+ *
+ * 搭起了基础的架子，完成了主体功能。
+ *
+ * ------------------------------------
+ *
+ * 1.1.0:
+ *
+ * 已实现：
+ * [X]纯采用table实现
+ * [X]支持三种展示方式：
+ *        1、直接将数据作为参数置入 data 中，此种情况不会分页，数据格式是list；
+ *        2、参数中定义了url，但是 pagination 设置为 false，则后台读取数据但不分页，数据格式同上；
+ *        3、定义了url，且 pagination 为 true（默认值），后台读取数据，且前台出现分页栏。
+ * [X]支持复选框（不要那种点击选整行的，看着含义不够明显）
+ * [X]支持首列显示行号
+ * [X]所有样式可通过css定制，例如定制那个载入页面时候的菊花的css
+ * [X]定义了多个事件，基本满足需求了
+ * [X]支持添加附加参数，以便传递到后台
+ * [X]提供了几个方法方便前台调用，例如reload（重建表格）、getSelectedItems（查看那些复选框被选中）
+ * [X]支持初次进入页面的时候表格初始为隐藏状态，之后通过调用reload方法创建表格。这个在跟某些组件联动
+ *    的时候比较有用，例如点击树上某个分支的时候才载入表格内容
+ * [X]提供三个demo网页，怎么用基本上一目了然了
+ *
+ * 尚未实现
+ * [ ]支持点击标题行后台排序（这个在犹豫是否有必要）
+ * [ ]序列号表单数据到请求中（这个是下一步要加的功能，等待项目实际用到的时候再加吧）
+ *
  */
 //jsHint options
 /*jslint devel: true, windows: true, passfail: false, evil: false, plusplus: true, white: true,
@@ -9,23 +39,34 @@
 
 	'use strict';
 
-	var version = '1.0.1';
+	var version = '1.1.0',
 
-	var $this,
+		settings,	// 设置项
+
+		// 数据载入模式，支持以下数值：
+		// 1：直接定义在data里面的静态数据
+		// 2：通过url读取的数据，不过不分页， pagination = false
+		// 3：通过url读取数据，分页， pagination = true
+		dataMode = 3,
+
+		rowsData = {},	// 用于存储表格数据列表
 		paramDataName = 'params',	// 绑定的data名字
-		notFirstLoad = 'notfirstLoad',	// 是否初次载入表格
-		isStaticData = false,	// 是否静态数据
+
+		paramPageName = 'page',
+		paramSizeName = 'size',
+
 		colNum = 0;	// 表格列数
 
 	/**
 	 * 类似于java 中的 String.format()。
-	 * 用法是： _s('abc{0}efg{1}hgi{2}...', '1', '2', '3');
+	 * 用法是： str('abc{0}efg{1}hgi{2}...', '1', '2', '3');
 	 * 需要注意的是中括号中需要从0开始
 	 *
 	 * @return {String} 替换后的字符串
 	 */
-	var _s = function() {
-		var args = arguments;
+	var str = function() {
+		var args = arguments,
+			s = args[0];
 
 		return s.replace(/{(\d+)}/g, function(match, number) {
 			var n = parseInt(number) + 1;
@@ -42,12 +83,32 @@
 			.replace(/>/g, "&gt;");
 	};
 
+	/**
+	 * 添加值到table的data上
+	 * 用于提交到后台。需要注意的是 size 和 page 是已经占用的参数
+	 * @param {Object} $table 表格的jQuery对象
+	 * @param {String} name   参数名
+	 * @param {Object} value  参数值
+	 */
+	var addParam2Data = function($table, name, value) {
+		var data = $table.data(paramDataName);
+
+		if ($.isPlainObject(name)) {
+			$.extend(data, name);
+		} else {
+			data[name] = value;
+		}
+		$table.data(paramDataName, data);
+	};
+
+
 	// 初始化
 	var init = function(options) {
-		$this = this;
+		var $this = this;
 
-		this.settings = $.extend({
-			// 取后台数据的url，需注意，如果这个字段非空，那么data字段默认忽略
+		settings = $.extend({
+			// 取后台数据的url，需注意，这个字段的优先级低于data字段
+			// 也就是说如果后者有值的话则忽略url
 			url: "",
 
 			// 静态数据，可用来生成非分页的表，需注意：此字段与url互斥
@@ -57,7 +118,7 @@
 			// 部分情况下可能在初始化的时候并不想显示表格，
 			// 那么这时候可以将此属性设置为 true，在此情况下
 			// 即使定义了 url，也不会载入数据。
-			// 可以在之后通过 showTable 方法重新显示表格
+			// 可以在之后通过 reload 方法重新显示表格
 			hidden: false,
 
 			tableCls: 'basicGrid',	// table上的class
@@ -67,13 +128,12 @@
 			autoEncode: true,	// 是否对内容做encode处理
 
 			rowNumCol: true,	// 是否显示行数
-			rowNumColText: '&nbsp;',	// 行数列标题
+			rowNumColText: 'No.',	// 行数列标题
 
 			altRows: true,	// 是否隔行显示不同颜色
 			altRowCls: 'alt-row-color', // 隔行定义的css
 
 			checkboxCol: true,	// 是否显示多选列
-
 
 			// 表格内容model
 			// {} 对象格式，内容有：
@@ -82,23 +142,38 @@
 			//   headCls: String
 			//   headStyle: String
 			//   hidden: boolean
-			//   formatter: function格式，参数为： (tableData, rowData, index, colData)
+			//   formatter: function格式，参数为： (tableData, rowData, index, cellData)
 			colModel: [],
 
 			// json数据的key定义
 			keys: {
+				// id字段名，默认为id
 				id: 'id',
+
+				// 分页信息，只需要返回当前页和总记录数即可
 				page: 'page',
 				total: 'total',
-				//records: 'totalRecords',
-				rows: 'rows',
+
+				// 记录集对象名称
+				rows: 'rows'
 			},
 
-			autoAppendPage: true,	// 是否自动在表格下面附加一个分页栏
+			pagination: true,		// 是否分页
 
-			currentPage: 1,		// 当前所在页数，从1开始
+			// 当指定分页栏的 selector 的话，则使用之
+			// 否则当 pagination 为 true 的时候会自动添加个分页栏
+			pageEl: null,
+
+			currentPage: 1,			// 当前所在页数，从1开始
 			pageSize: 20,			// 每页记录数
 
+			// 提供多个参数可用：
+			//   {from}: 开始的记录位置
+			//   {to}: 结束的记录位置
+			//   {total}: 记录总数
+			//   {curPage}: 当前所在页面
+			//   {pages}: 总页数
+			//   {size}: 每页记录数，注意：不是实际载入的记录数，最后一页数量可能会小于这个数值
 			pageInfo: 'Display {from} to {to} of {total} items',
 
 			txtFirst: '&hellip;',
@@ -110,18 +185,16 @@
 			txtLast: '&hellip;',
 			titleLast: '尾页',
 
-			// 当autoAppendPage: false 的时候，需要指定分页栏的 selector
-			pageEl: '',
 
-			onError: null,	// url载入失败后的处理方法
-			
-			extraParams: {}	// 扩展对象，用于提交时候一起扔到后台
+			onError: null,		// url载入失败后的处理方法
+
+			extraParams: {}		// 扩展对象，用于提交时候一起扔到后台
 
 		}, options);
 
 		return this.each(function() {
 			var $table = $(this),
-				o = $this.settings;
+				o = settings;
 
 			// 首先判断id的格式是否正确
 			if (!/^\#[\w\-_]+$/i.test($this.selector)) {
@@ -129,17 +202,23 @@
 			}
 
 			// 判断属性定义是否正确
-			if (!_settingsValid(o)) return;
+			if (!settingsValid(o)) return;
 
-			// 取得给定table的id
-			$table.tableId = $this.selector.slice(1);
+			// 取得给定table的id，这个暂时没想到有啥必要，先屏蔽吧
+			// $table.tableId = $this.selector.slice(1);
 
-			// 判断url是否为空，不空的话ajax读取数据
-			// todo
-			isStaticData = o.data && o.data.length > 0;
-			$table.data('isStaticData', isStaticData);
+			// 判断数据载入模式
+			// settings中的data参数优先级将会高于url
+			if (o.data && o.data.length > 0) {
+				dataMode = 1;
+				rowsData = o.data;
+			} else if (o.url) {
+				dataMode = o.pagination ? 3 : 2;
+			} else {
+				$.error('参数中data和url必须设置一个');
+			}
 
-			_initTable($table, o);
+			initTable($table);
 
 			// 是否隐藏表格
 			if (o.hidden) {
@@ -147,134 +226,8 @@
 				return;
 			}
 
-			_buildTable($(this));
+			buildTable($table);
 
-		});
-	};
-
-	/**
-	 * 添加值到table的data上
-	 * @param {Object} $table 表格的jQuery对象
-	 * @param {String} name   参数名
-	 * @param {Object} value  参数值
-	 */
-	var _addParam2Data = function($table, name, value) {
-		var data = $table.data(paramDataName);
-		
-		if ($.isPlainObject(name)) {
-			$.extend(data, name);
-		} else {
-			data[name] = value;
-		}
-		$table.data(paramDataName, data);
-	};
-
-	var _notFirstLoad = function($table) {
-		return $table.data(notFirstLoad);
-	};
-
-	/**
-	 * 初始化table
-	 */
-	var _initTable = function($table, o) {
-		var colNum = 0, model, cls;
-
-		// 设置表格样式
-		if (!$table.hasClass(o.tableCls)) {
-			$table.addClass(o.tableCls);
-		}
-		if (o.width) {
-			$table.attr('width', o.width);
-		}
-
-		// 生成表格标题行
-		_appendTableHead($table, o);
-
-		_resetData($table, o);
-
-	};
-	
-	var _resetData = function($table, o) {
-		// 绑定个空对象到table上
-		var data = {};
-		data['size'] = o.pageSize;
-		data['page'] = o.currentPage;
-		$.extend(data, o.extraParams);
-		$table.data(paramDataName, data);
-	}
-
-	var _buildTable = function ($table) {
-
-		var o = $this.settings;
-
-		if (!isStaticData) {
-			// 从后台载入数据
-			_loadDataFromUrl($table, o, _onSuccess, o.onError);
-		} else {
-
-			_buildTableContent($table, o);
-
-		}
-	};
-
-	/**
-	 * 填充表格内容，生成分页组件，并进行事件绑定等操作
-	 */
-	var _buildTableContent = function ($table, o, appendPager, pager) {
-		_appendTableBody($table, o);
-
-		// bind event
-		_bindEvent2Table($table);
-
-		if (appendPager && pager) {
-			_appendPager($table, o, pager);
-		}
-
-
-		// 第一次载入表格之后，置入个标记，方便后面调用
-		$table.data(notFirstLoad, true);
-	}
-
-	/**
-	 * url载入成功之后的处理方法
-	 *
-	 */
-	var _onSuccess = function ($table, o, data, status) {
-		var pager = {};
-
-		o.data = data[o.keys.rows];
-
-		pager['total'] = data[o.keys.total];
-		pager['page'] = data[o.keys.page];
-		pager['size'] = o.pageSize;
-
-		_buildTableContent($table, o, true, pager);
-
-	};
-
-	/**
-	 * 通过ajax方式从后台读取json数据
-	 *
-	 * @return {[type]} [description]
-	 */
-	var _loadDataFromUrl = function ($table, o, onsuccess, onerror) {
-		var data = $table.data(paramDataName);
-
-		$.ajax({
-			url: o.url,
-			dataType: 'json',
-			cache: false,
-			context: $table,
-			data: data,
-			success: function (data, status) {
-				onsuccess($table, o, data, status);
-			},
-			error: function(req, status, err) {
-				console.log(err);
-				if (onerror) {
-					onerror($table, o, req, status, err);
-				}
-			}
 		});
 	};
 
@@ -284,7 +237,7 @@
 	 * @param  {Object} o 属性对象
 	 * @return {boolean}   验证结果
 	 */
-	var _settingsValid = function(o) {
+	var settingsValid = function(o) {
 
 		var result = true;
 
@@ -295,26 +248,168 @@
 		return result;
 	};
 
+	/**
+	 * 初始化table
+	 * 只是设置一些属性，并不实际生成表格内容，也不会从后台读取数据
+	 */
+	var initTable = function($table) {
+		var colNum = 0, model, cls;
 
+		// 设置表格样式
+		if (!$table.hasClass(settings.tableCls)) {
+			$table.addClass(settings.tableCls);
+		}
+		if (settings.width) {
+			$table.attr('width', settings.width);
+		}
 
-	var _appendTableHead = function($table, o) {
+		resetData($table);
+	};
+
+	/**
+	 * 设置初始参数并将其缓存到表格对象上
+	 * @param  {Object} $table jQuery格式的对象
+	 * @return {void}
+	 */
+	var resetData = function($table) {
+		// 绑定个空对象到table上并做一些初始化操作
+		var data = {};
+
+		if (dataMode === 3) {
+			data[paramSizeName] = settings.pageSize;
+			data[paramPageName] = settings.currentPage;
+		}
+
+		$.extend(data, settings.extraParams);
+		$table.data(paramDataName, data);
+	}
+
+	/**
+	 * 表格生成的主体函数
+	 * @param  {[type]} $table [description]
+	 * @return {[type]}        [description]
+	 */
+	var buildTable = function ($table) {
+		// 表格生成之前触发的事件
+		$table.trigger('loadBegin');
+
+		if (dataMode === 1) {	// 根据静态的 setting.data 参数来生成表格，无分页
+			buildTableContent($table);
+		} else {
+			// 从后台载入数据
+			loadDataFromUrl($table, onSuccess, settings.onError);
+
+		}
+	};
+
+	/**
+	 * 通过ajax方式从后台读取json数据
+	 *
+	 * @return {[type]} [description]
+	 */
+	var loadDataFromUrl = function ($table, onsuccess, onerror) {
+		var params = $table.data(paramDataName);
+
+		$.ajax({
+			url: settings.url,
+			dataType: 'json',
+			//cache: false,
+			context: $table,
+			data: params,
+			success: function (data, status) {
+				onsuccess($table, data, status);
+			},
+			error: function(req, status, err) {
+				if ($.isFunction(onerror)) {
+					onerror($table, req, status, err);
+				}
+				$table.trigger('loadError', [req, status, err]);
+			}
+		});
+	};
+
+	/**
+	 * url载入成功之后的处理方法
+	 *
+	 */
+	var onSuccess = function ($table, data, status) {
+		var pageParam = {},
+			o = settings;
+
+		// 数据格式不同，需要分别处理
+		if (dataMode === 3) {	// 处理分页参数
+			// 从rows对象得到数据
+			rowsData = data[o.keys.rows];
+
+			pageParam['total'] = data[o.keys.total];
+			pageParam['page'] = data[o.keys.page];
+			pageParam['size'] = o.pageSize;
+		} else {
+			// 从后台读取的不分页表格数据格式是列表，没有分页信息
+			rowsData = data;
+		}
+
+		buildTableContent($table, o.pagination, pageParam);
+
+	};
+
+	/**
+	 * 填充表格内容，生成分页组件，并进行事件绑定等操作
+	 *
+	 * @param  {Object} $table     jQuery格式的表格对象
+	 * @param  {boolean} appendPage 是否添加分页栏
+	 * @param  {Object} pageParam  一些分页相关的参数
+	 * @return {void}
+	 */
+	var buildTableContent = function ($table, appendPage, pageParam) {
+		// 首先清楚表格内容
+		$table.empty();
+
+		// 生成表格标题行
+		appendTableHead($table);
+
+		// 生成内容
+		appendTableBody($table);
+
+		// 是否添加分页栏
+		if (appendPage && pageParam) {
+			appendPagebar($table, pageParam);
+		}
+
+		// 表格生成完毕之后触发的事件
+		$table.trigger('loadComplete', [rowsData]);
+	};
+
+	/**
+	 * 生成表格标题行
+	 *
+	 * @param  {Object} $table
+	 * @return {void}
+	 */
+	var appendTableHead = function($table) {
 		var model, cls, i,
-			thead = '<thead><tr>';
+			o = settings,
+			temp, $temp,
+			$thead = $('<thead><tr></tr></thead>');
 
 		// 遍历列并顺便创建标题行
 		// 如果需要显示计数列，则需要加1
 		if (o.rowNumCol) {
 			colNum += 1;
-			thead += '<th class="rownum"';
-			thead += '>' + o.rowNumColText + '</th>';
+
+			temp = '<th class="rownum"';
+			temp += '>' + o.rowNumColText + '</th>';
+			$thead.append(temp);
 		}
 
 		// 是否显示checkbox列
 		if (o.checkboxCol) {
 			colNum += 1;
-			thead += '<th class="th-cb-all">';
-			thead += '<input type="checkbox" class="cb-all">';
-			thead += '</th>';
+
+			temp = '<th class="th-cb-all">';
+			temp += '<input type="checkbox" class="cb-all">';
+			temp += '</th>';
+			$thead.append(temp);
 		}
 
 		for (i = 0; i < o.colModel.length; i++) {
@@ -323,106 +418,148 @@
 				continue;
 			}
 
-			cls = model.index + '-header';
+			cls = 'th-' + model.index;
 
 			colNum += 1;
-			thead += '<th';
+
+			temp = '<th';
 			// 设置标题列的样式
 			if (model.headCls) {
 				cls += ' ' + model.headCls;
 			};
-			thead += ' class="' + cls + '"';
+			temp += ' class="' + cls + '"';
 
 			if (model.headStyle) {
-				thead += ' style="' + model.headStyle + '"';
+				temp += ' style="' + model.headStyle + '"';
 			};
-			
+
 			if (model.width) {
-				thead += ' width="' + model.width + '"';
+				temp += ' width="' + model.width + '"';
 			}
 
-			thead += '>' + model.text + '</th>';
+			temp += '>' + model.text + '</th>';
 
+			// 给tr绑定个事件
+			$temp = $(temp);
+			// 如果要在click里面得到model对象，需要先将其存储起来，否则得到的是循环的最后一个对象
+			$temp.data('model', model);
+			$temp.click(function(e) {
+				$table.trigger('headClick', [$(this).data('model'), this]);
+			});
+
+			$thead.append($temp);
 		};
 
-		thead += '</tr></thead>'
-		$table.append(thead);
+		$table.append($thead);
 	};
 
-	var _appendTableBody =function($table, o) {
-		var model;
+	var appendTableBody =function($table) {
+		var model,
+			temp,
+			$temp,
+			$tbody,
+			rowData,
+			$row,
+			cellData,
+			i,
+			j,
+			tempData,
+			o = settings;
 
-		// 首先删除tbody
-		$('tbody', $table).remove();
+		$tbody = $('<tbody></tbody>');
 
-		// 创建表格内容部分 tbody
-		var tbody = '<tbody>';
-		if ($.isEmptyObject(o.data)) {
-			tbody += '<tr><td colspan="' + colNum + '" class="empty-tbody">' + o.emptyTbodyText
+		if ($.isEmptyObject(rowsData)) {
+			temp = '<tr><td colspan="' + colNum + '" class="empty-tbody">' + o.emptyTbodyText
 				+ '</td></tr>';
+			$tbody.append(temp);
 		} else {
-			var row = null;
-			var colData = null;
-			for (var i = 0; i < o.data.length; i++) {
-				row = o.data[i];
 
-				tbody += '<tr';
+			for (i = 0; i < rowsData.length; i++) {
+				rowData = rowsData[i];
+
+				$row = $('<tr></tr>');
 				if (o.altRows && (i + 1) % 2 === 0) {
-					tbody += ' class="' + o.altRowCls + '"';
+					$row.addClass(o.altRowCls);
 				}
-				tbody += '>';
+
+				temp = '';
 
 				// 首先创建计数列
 				if (o.rowNumCol) {
-					tbody += '<td class="rownum"';
-					tbody += '>' + (i + 1) + '</th>';
+					temp += '<td class="rownum"';
+					temp += '>' + (i + 1) + '</td>';
 				};
 
 				// 是否显示checkbox列
 				if (o.checkboxCol) {
-					tbody += '<td class="td-cb-row">';
-					tbody += '<input type="checkbox" class="cb-row"';
-					tbody += ' name="rowId" value="' + row[o.idKey] + '">';
-					tbody += '</td>';
+					temp += '<td class="td-cb-row">';
+					temp += '<input type="checkbox" class="cb-row"';
+					temp += ' name="rowId" value="' + rowData[o.keys.id] + '">';
+					temp += '</td>';
 				};
+				$row.append(temp);
 
 				// 创建实际的数据列
-				for (var j = 0; j < o.colModel.length; j++) {
+				for (j = 0; j < o.colModel.length; j++) {
 					model = o.colModel[j];
 					if (model.hidden) {
 						continue;
 					};
 
 					// 生成cell
-					colData = row[model.index];
+					cellData = rowData[model.index];
 
 					// 如果对象需要自己处理数据，则直接调用其处理函数。
 					// 否则会自动处理：如果是空值，则返回 '';
 					// 如果autoEncode设置为true，则需要escape html标签
 					if ($.isFunction(model.formatter)) {
-						colData = model.formatter.call(null, o.data, row, i, colData);
+						cellData = model.formatter.call(null, o.data, rowData, i, cellData);
 					} else {
-						if (colData) {
-							colData = o.autoEncode ? htmlEncode(colData) : colData;
+						if (cellData) {
+							cellData = o.autoEncode ? htmlEncode(cellData) : cellData;
 						} else {
-							colData = '';
+							cellData = '';
 						}
 					}
-					tbody += '<td>' + colData + '</td>';
+					temp = '<td>' + cellData + '</td>';
 
-				};
+					// 给单元格绑定事件，从单元格可以很方便找到行，但是反之则很难了
+					// 所以给行上绑定事件没啥意义
+					$temp = $(temp);
+					tempData = {
+						'model': model,
+						'rowsData': rowsData,
+						'rowData': rowData,
+						'cellData': rowData[model.index]
+					};
+					$temp.data('tempData', tempData);
+					$temp.click(function (e) {
+						tempData = $(this).data('tempData');
 
-				tbody += '</tr>';
+						$table.trigger('cellClick',	[
+								tempData.model,
+								tempData.rowsData,
+								tempData.rowData,
+								tempData.cellData,
+								this
+							]);
+					});
+
+					$row.append($temp);
+				}
+
+				$tbody.append($row);
 			};
 
 		}
 
-		tbody += '</tbody>'
-		$table.append(tbody);
+		$table.append($tbody);
+
+		bindEvent2Table($table);
 	};
 
 	// 给table上的各个元素绑定事件
-	var _bindEvent2Table = function($table) {
+	var bindEvent2Table = function($table) {
 
 		// 单独点选某个checkbox的时候触发的方法
 		// 给父元素 td、tr 增加后删除个 class
@@ -430,7 +567,6 @@
 		$('.cb-row', $table).unbind('click').click(function() {
 			$(this).parent('td').toggleClass('td-cb-row-active');
 			$(this).parent('td').parent('tr').toggleClass('tr-cb-row-active');
-
 		});
 
 		// 点击全选checkbox的时候触发的事件
@@ -448,9 +584,16 @@
 	};
 
 	/**
-	 * Pager 对象，用于分页处理时候使用.
+	 * Pagination 对象，用于分页处理时候使用.
 	 */
-	var Pager = function(total, curPage, size, navPages) {
+	/**
+	 * 分页对象
+	 * @param {int} total    记录集总数
+	 * @param {int} curPage  当前页
+	 * @param {int} size     每页记录数
+	 * @param {int} navPages 同时最多显示导航页码数
+	 */
+	var Pagination = function(total, curPage, size, navPages) {
 		// 总记录数
 		this.total = total;
 
@@ -463,7 +606,7 @@
 		// 总页数
 		this.pages = Math.floor((this.total - 1) / this.size + 1);
 
-		// 对于给定的当前页，还需要进行下判断，放置给的值是非法的
+		// 对于给定的当前页，还需要进行下判断，防止给的值是非法的
 		// 之后在系统中调用的当前页的属性使用的是 pageNumber
 		if (this.curPage < 1) {
 			this.pageNumber = 1;
@@ -479,7 +622,7 @@
 		this.hasPreviousPage = this.pageNumber > 1;
 		this.hasNextPage = this.pageNumber < this.pages;
 
-		// 导航页码数
+		// 导航页码数，默认是8个
 		this.navPages = navPages ? navPages : 8;
 
 		// 记录当前显示的页码，数组形式
@@ -492,7 +635,7 @@
 	 * 计算导航页数组内容
 	 * @return {数组} 导航页数字列表
 	 */
-	Pager.prototype.calNavPageNumbers = function() {
+	Pagination.prototype.calNavPageNumbers = function() {
 		var i, startNum, endNum, leftNum, rightNum;
 
 		// 当总页数小于或等于导航页码数
@@ -525,7 +668,7 @@
 		}
 	}
 
-	Pager.prototype.output = function (o, currentPage) {
+	Pagination.prototype.output = function (o, currentPage) {
 		var result = '', i, num;
 
 		if (!this.isFirstPage) {
@@ -554,119 +697,159 @@
 		return result;
 	}
 
-	var _appendPager = function($table, o, remotePaper) {
-		var $pDiv, info, numbers, pager, from, to, stat;
+	/**
+	 * 生成分页栏
+	 *
+	 * @param  {Object} $table
+	 * @param  {Object} pageParams 从load的对象中取到的分页信息
+	 * @return {void}
+	 */
+	var appendPagebar = function($table, pageParams) {
+		var $pDiv, info, numbers, pagination, from, to, stat,
+			o = settings;
 
 		// 判断是否是自动添加分页栏还是在页面上的某个元素下面生成分页栏
-		if (o.autoAppendPage) {
-			$pDiv = $('<div class="basicGridPager"></div>');
-			if (_notFirstLoad($table)) {
-				$pDiv = $('.basicGridPager');
-			}
+		if (!o.pageEl) {
+			// 先做个清除操作
+			$('.basicGridPagebar').remove();
+
+			$pDiv = $('<div class="basicGridPagebar"></div>');
 		} else {
 			$pDiv = $(o.pageEl);
+			$pDiv.empty();
 		}
-		// $('div', $pDiv).remove();
-		// 首先对div内部做清除操作，防止多次插入内容
-		$pDiv.empty();
-		
+
 		// 如果没有数据，则不显示分页栏
-		if (!(o.data && o.data.length > 0)) {
+		if (!(rowsData && rowsData.length > 0)) {
 			$pDiv.hide();
 			return;
 		} else {
 			$pDiv.show().addClass('clearfix');
 		}
 
-		pager = new Pager(remotePaper['total'], remotePaper['page'], remotePaper['size']);	// total, page, size
-		from = (pager.curPage - 1) * pager.size + 1;
-		to = from + pager.size -1;
-		if (to > pager.total) {
-			to = pager.total;
+		// total, page, size
+		pagination = new Pagination(pageParams['total'], pageParams['page'], pageParams['size']);
+
+		from = (pagination.curPage - 1) * pagination.size + 1;
+		to = from + pagination.size -1;
+		if (to > pagination.total) {
+			to = pagination.total;
 		}
 
-		info = '<div class="pager-info">';
+		info = '<div class="pageinfo">';
 		stat = o.pageInfo;
 		stat = stat.replace(/{from}/, from);
 		stat = stat.replace(/{to}/, to);
-		stat = stat.replace(/{total}/, pager.total);
-		stat = stat.replace(/{curPage}/, pager.curPage);
-		stat = stat.replace(/{pages}/, pager.pages);
+		stat = stat.replace(/{total}/, pagination.total);
+		stat = stat.replace(/{curPage}/, pagination.pageNumber);
+		stat = stat.replace(/{pages}/, pagination.pages);
+		stat = stat.replace(/{size}/, settings.pageSize);
 		info += stat + '</div>';
 
 		numbers = '<div class="pagination"><ul>';
 
-		numbers += pager.output(o, pager.curPage);
+		numbers += pagination.output(o, pagination.curPage);
 
 		numbers += '</ul></div>';
 
 		$pDiv.append(info).append(numbers);
 		$table.after($pDiv);
 
-		_bindEvent2Pager($table, $pDiv);
+		bindEvent2Pagebar($table, $pDiv);
 	};
 
-	var _bindEvent2Pager = function($table, $pager) {
-		$('.pagination a', $pager).click(function(e) {
+	/**
+	 * 绑定事件到分页对象上
+	 * @param  {Object} $table
+	 * @param  {Object} $pagebar jQuery格式的对象，指向分页栏
+	 * @return {void}
+	 */
+	var bindEvent2Pagebar = function($table, $pagebar) {
+		$('.pagination a', $pagebar).click(function(e) {
 			var $this = $(this);
 
 			e.preventDefault();
 
 			var page = $this.attr('page');
 
-			_addParam2Data($table, 'page', parseInt(page));
-			console.log($table.data(paramDataName));
+			// 点击分页数字时候触发的事件，可以基于此做一些显示 loading... 之类的操作
+			// 例如在某个位置显示个菊花，这个可以自己在css中定制
+			$table.trigger('pageNumberClick', [page]);
 
-			_buildTable($table);
+			$('.pagination', $pagebar).prepend('<span class="page-loading"></span>');
+
+			addParam2Data($table, paramPageName, parseInt(page));
+
+			buildTable($table);
 		});
 	}
 
 	/**
-	 * 增加一些扩展属性
+	 * 增加一些扩展属性，如果在前端显示调用这个方法的话，需要随后调用 reload 方法
 	 */
 	var addExtraParams = function(params) {
 		if ($.isEmptyObject(params)) return;
 
 		return this.each(function () {
 			var $table = $(this);
-			_addParam2Data($table, params);
+			addParam2Data($table, params);
 
 		});
 	};
 
+	/**
+	 * 重新生成表格
+	 * @param  {String} url 新的url
+	 * @return {void}
+	 */
 	var reload = function(url) {
-		showTable(this);
 
 		return this.each(function() {
 			var $table = $(this);
-			if (url && url !== $this.settings.url) {
-				$this.settings.url = url;
-				_resetData($table, $this.settings);
+
+			if (settings.hidden) {
+				settings.hidden = false;
+
 			}
-			_buildTable($table);
+			$table.show();
+
+			// 如果修改了url，则需要重置一些初始参数
+			if (url && url !== settings.url) {
+				settings.url = url;
+				resetData($table, settings);
+			}
+			buildTable($table);
 		});
 
 	};
 
-	var showTable = function (ctx) {
-		if ($this.settings.hidden) {
-			$this.settings.hidden = false;
+	/**
+	 * 返回选中的记录的id，格式为数组
+	 *
+	 * @return {Array} 选中的条目的id
+	 */
+	var getSelectedItems = function() {
+		var result = [];
 
-			var c = ctx ? ctx : this;
-			return c.each(function() {
-				$(this).show();
+		this.each(function () {
+			var list = $('.cb-row:checked', $(this));
+			$.each(list, function(i, item) {
+				result[i] = $(item).val();
 			});
-		}
-	}
+		});
+
+		return result;
+	};
 
 	var methods = {
 		init: init,
-		showTable: showTable,
 		reload: reload,
 		addExtraParams: addExtraParams,
 		settings: function() {
-			return this.settings;
+			return settings;
 		},
+
+		getSelectedItems: getSelectedItems,
 
 		// 返回版本号
 		version: function() {
@@ -674,6 +857,13 @@
 		}
 	};
 
+	/**
+	 * 主方法，无参数的话，默认调用 init 方法。
+	 * 其它方法调用方式： $grid.basicGrid('reload')
+	 *
+	 * @param  {String} method 方法名，后面的参数为此方法需要的参数
+	 * @return {void}
+	 */
 	$.fn.basicGrid = function (method) {
 
 		if ( methods[method] ) {
