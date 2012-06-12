@@ -33,7 +33,7 @@
     $(function() {
       var $demo = $('#demo');
 
-
+      /*
       var staticData = [];
       for (var i = 0; i < 20; i++) {
         var model = {};
@@ -44,22 +44,26 @@
         staticData[i] = model;
       }
       console.log(staticData);
+       */
 
       var grid = $demo.basicGrid({
-        data: staticData,
-        hidden: true,
+        //data: staticData,
+        //url: 'demo1.json',
+        url: 'http://localhost:8080/base/admin/security/authority-grid/4028b88137c3dd9c0137c3dda23e0080'
+        // hidden: true,
 
         //rowNumCol: false,
         colModel: [
-          {text: '列1', index: 'col1', headCls: 'abc', headStyle: 'background-color: red'},
-          {text: '列2', index: 'col2', hidden: true},
-          {text: '列3', index: 'col3', formatter: function(tableData, rowData, index, colData) {
+          {text: '列1', index: 'CODE', headCls: 'abc', headStyle: 'background-color: red'},
+          {text: '列2', index: 'NAME', hidden: false},
+          {text: '列5', index: 'MEMO'},
+          {text: '列3', index: 'PCODE', formatter: function(tableData, rowData, index, colData) {
             // console.log(index);
             // console.log(rowData);
               return '<b>' + colData + '</b>';
           }},
-          {text: '列4', index: 'col4'},
-          {text: '列5', index: 'col5'}
+          {text: '列4', index: 'PNAME'},
+          {text: '列5', index: 'PMEMO'}
         ]
       });
       //console.log(grid[0].tableId);
@@ -76,6 +80,8 @@
         $demo.basicGrid('reload');
       });
       console.log($demo.basicGrid('version'));
+      //console.log($demo.basicGrid('settings'));
+      console.log($demo.basicGrid('addExtraParams', {aaa: 1, bbb: 2}));
       //console.log($demo.basicGrid('showTable'));
     })
 

@@ -9,6 +9,13 @@
 	text-align: right;
 	padding-right: 5px;
 }
+.basicGrid thead .th-cb-all {
+	width: 30px;
+	text-align: center;
+}
+.basicGrid tbody .td-cb-row {
+	text-align: center;
+}
 .basicGrid .empty-tbody {
 	text-align: center;
 }
@@ -17,5 +24,37 @@
  * 交叉行颜色
  */
 .basicGrid .alt-row-color {
+	background-color: #ccc;
+}
 
+/**
+ * 选中后行上的样式
+ */
+.basicGrid .tr-cb-row-active, .basicGrid .tr-cb-row-active .rownum {
+	background-color: green;
+}
+/**
+ * 选中后复选框所在 td 的样式
+ */
+.basicGrid .td-cb-row-active {
+
+}
+
+.basicGrid .row-hover {
+	background-color: blue;
+	color: white;
+}
+
+
+/**
+ * pager
+ */
+.basicGridPager {
+	border: 1px solid red;
+}
+.basicGridPager .pager-info {
+	float: left;
+}
+.basicGridPager .pager-numbers {
+	float: right;
 }
