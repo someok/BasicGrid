@@ -30,6 +30,12 @@
  * [ ]支持点击标题行后台排序（这个在犹豫是否有必要）
  * [ ]序列号表单数据到请求中（这个是下一步要加的功能，等待项目实际用到的时候再加吧）
  *
+ * ------------------------------------
+ * 
+ * 1.1.1
+ *
+ * 修改了个hidden属性为true时候没有设置url会报错的bug
+ *
  */
 //jsHint options
 /*jslint devel: true, windows: true, passfail: false, evil: false, plusplus: true, white: true,
@@ -39,7 +45,7 @@
 
 	'use strict';
 
-	var version = '1.1.0',
+	var version = '1.1.1',
 
 		settings,	// 设置项
 
@@ -214,7 +220,7 @@
 			if (o.data && o.data.length > 0) {
 				dataMode = 1;
 				rowsData = o.data;
-			} else if (o.url) {
+			} else if (o.url || o.hidden) {
 				dataMode = o.pagination ? 3 : 2;
 			} else {
 				$.error('参数中data和url必须设置一个');
@@ -771,6 +777,7 @@
 			var $this = $(this);
 
 			e.preventDefault();
+//			e.stopPropagation();
 
 			var page = $this.attr('page');
 
