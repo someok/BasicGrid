@@ -31,11 +31,17 @@
  * [ ]序列号表单数据到请求中（这个是下一步要加的功能，等待项目实际用到的时候再加吧）
  *
  * ------------------------------------
- * 
+ *
  * 1.1.1
  *
  * 修改了个hidden属性为true时候没有设置url会报错的bug
  *
+ * ------------------------------------
+ *
+ * 1.1.2
+ *
+ * 修正了 thead下面 tr没有包住td的bug
+ * 增加了操作列，用于显示修改、删除两个连接，并且提供了俩相关的事件
  */
 //jsHint options
 /*jslint devel: true, windows: true, passfail: false, evil: false, plusplus: true, white: true,
@@ -45,7 +51,7 @@
 
 	'use strict';
 
-	var version = '1.1.1',
+	var version = '1.1.2',
 
 		settings,	// 设置项
 
@@ -134,7 +140,7 @@
 			autoEncode: true,	// 是否对内容做encode处理
 
 			rowNumCol: true,	// 是否显示行数
-			rowNumColText: 'No.',	// 行数列标题
+			rowNumColText: '#',	// 行数列标题
 
 			altRows: true,	// 是否隔行显示不同颜色
 			altRowCls: 'alt-row-color', // 隔行定义的css
@@ -150,6 +156,13 @@
 			//   hidden: boolean
 			//   formatter: function格式，参数为： (tableData, rowData, index, cellData)
 			colModel: [],
+
+			// 是否将最后一行默认为操作行
+			// 该行将显示“修改、删除”两个连接
+			optCol: true,
+			optColHeadText: '操作',
+			optModifyText: '<i class="icon-edit"></i> 修改',
+			optDeleteText: '<i class="icon-remove"></i> 删除</a>',
 
 			formEl: '',	// TODO: 跟表单绑定
 
@@ -182,7 +195,8 @@
 			//   {curPage}: 当前所在页面
 			//   {pages}: 总页数
 			//   {size}: 每页记录数，注意：不是实际载入的记录数，最后一页数量可能会小于这个数值
-			pageInfo: 'Display {from} to {to} of {total} items',
+			//pageInfo: 'Display {from} to {to} of {total} items',
+			pageInfo: '页数: {curPage}/{pages} (记录: {from} - {to})',
 
 			txtFirst: '&hellip;',
 			titleFirst: '首页',
@@ -398,7 +412,8 @@
 		var model, cls, i,
 			o = settings,
 			temp, $temp,
-			$thead = $('<thead><tr></tr></thead>');
+			$thead = $('<thead></thead>'),
+			$theadTr = $('<tr></tr>');
 
 		// 遍历列并顺便创建标题行
 		// 如果需要显示计数列，则需要加1
@@ -407,7 +422,7 @@
 
 			temp = '<th class="rownum"';
 			temp += '>' + o.rowNumColText + '</th>';
-			$thead.append(temp);
+			$theadTr.append(temp);
 		}
 
 		// 是否显示checkbox列
@@ -417,7 +432,7 @@
 			temp = '<th class="th-cb-all">';
 			temp += '<input type="checkbox" class="cb-all">';
 			temp += '</th>';
-			$thead.append(temp);
+			$theadTr.append(temp);
 		}
 
 		for (i = 0; i < o.colModel.length; i++) {
@@ -455,8 +470,16 @@
 				$table.trigger('headClick', [$(this).data('model'), this]);
 			});
 
-			$thead.append($temp);
+			$theadTr.append($temp);
 		};
+
+		// 是否显示操作列
+		if (o.optCol) {
+			temp = '<th class="opt-head">' + o.optColHeadText + '</th>';
+			$theadTr.append(temp);
+		}
+
+		$thead.append($theadTr);
 
 		$table.append($thead);
 	};
@@ -467,11 +490,17 @@
 			$temp,
 			$tbody,
 			rowData,
+			rowId,
 			$row,
 			cellData,
 			i,
 			j,
 			tempData,
+
+			delOpt, $delOpt,
+			modOpt, $modOpt,
+			$optItem,
+
 			o = settings;
 
 		$tbody = $('<tbody></tbody>');
@@ -484,6 +513,7 @@
 
 			for (i = 0; i < rowsData.length; i++) {
 				rowData = rowsData[i];
+				rowId = rowData[o.keys.id];
 
 				$row = $('<tr></tr>');
 				if (o.altRows && (i + 1) % 2 === 0) {
@@ -502,7 +532,7 @@
 				if (o.checkboxCol) {
 					temp += '<td class="td-cb-row">';
 					temp += '<input type="checkbox" class="cb-row"';
-					temp += ' name="rowId" value="' + rowData[o.keys.id] + '">';
+					temp += ' name="rowId" value="' + rowId + '">';
 					temp += '</td>';
 				};
 				$row.append(temp);
@@ -554,6 +584,52 @@
 					});
 
 					$row.append($temp);
+				}
+
+				// 是否显示操作列
+				if (o.optCol) {
+					modOpt = '<a href="#" itemId="' + rowId + '" class="item-opt-modify">' + o.optModifyText + '</a>';
+        			delOpt = '<a href="#" itemId="' + rowId + '" class="item-opt-delete">' + o.optDeleteText + '</a>';
+
+        			$modOpt = $(modOpt);
+        			$delOpt = $(delOpt);
+
+        			$optItem = $('<span class="item-opt"></span>');
+
+        			// 提供俩事件用于在修改或者删除的时候触发
+        			tempData = {
+						'rowsData': rowsData,
+						'rowData': rowData,
+						'rowId': rowId
+					};
+        			$modOpt.data('tempData', tempData);
+        			$delOpt.data('tempData', tempData);
+
+        			$modOpt.click(function(e) {
+        				e.preventDefault();
+
+        				tempData = $(this).data('tempData');
+        				$table.trigger('optModifyClick', [
+        						tempData.rowsData,
+								tempData.rowData,
+								tempData.rowId,
+								this
+        					]);
+        			});
+        			$delOpt.click(function(e) {
+        				e.preventDefault();
+
+        				tempData = $(this).data('tempData');
+        				$table.trigger('optDeleteClick', [
+        						tempData.rowsData,
+								tempData.rowData,
+								tempData.rowId,
+								this
+        					]);
+        			});
+
+        			$optItem.append($modOpt).append($delOpt);
+        			$row.append($('<td></td>').append($optItem));
 				}
 
 				$tbody.append($row);
