@@ -42,6 +42,14 @@
  *
  * 修正了 thead下面 tr没有包住td的bug
  * 增加了操作列，用于显示修改、删除两个连接，并且提供了俩相关的事件
+ *
+ * ------------------------------------
+ *
+ * 1.1.3
+ *
+ * 增加自定义操作按钮属性 optButtons
+ * 缺省的修改、删除按钮属性放置到 optDefaultBtn
+ *
  */
 //jsHint options
 /*jslint devel: true, windows: true, passfail: false, evil: false, plusplus: true, white: true,
@@ -51,7 +59,7 @@
 
 	'use strict';
 
-	var version = '1.1.2',
+	var version = '1.1.3',
 
 		settings,	// 设置项
 
@@ -118,7 +126,7 @@
 	var init = function(options) {
 		var $this = this;
 
-		settings = $.extend({
+		settings = $.extend(true, {
 			// 取后台数据的url，需注意，这个字段的优先级低于data字段
 			// 也就是说如果后者有值的话则忽略url
 			url: "",
@@ -161,8 +169,25 @@
 			// 该行将显示“修改、删除”两个连接
 			optCol: true,
 			optColHeadText: '操作',
-			optModifyText: '<i class="icon-edit"></i> 修改',
-			optDeleteText: '<i class="icon-remove"></i> 删除</a>',
+
+			optDefaultBtn: {
+                // 如果不想显示某个缺省按钮，直接将其置为 null 即可
+				modifyBtn: {
+					cls: 'item-opt-modify',
+					text: '<i class="icon-edit"></i> 修改',
+					event: 'optModifyClick',
+					action: null
+				},
+				deleteBtn: {
+					cls: 'item-opt-delete',
+					text: '<i class="icon-remove"></i> 删除</a>',
+					event: 'optDeleteClick',
+					action: null
+				},
+				cc: null
+			},
+
+			optButtons: [],
 
 			formEl: '',	// TODO: 跟表单绑定
 
@@ -495,6 +520,12 @@
 			cellData,
 			i,
 			j,
+
+			defaultBtns,
+			btn,
+			btnIndex,
+			buttons,
+
 			tempData,
 
 			delOpt, $delOpt,
@@ -510,6 +541,19 @@
 				+ '</td></tr>';
 			$tbody.append(temp);
 		} else {
+
+			// 初始化操作按钮对象
+			buttons = o.optButtons || [];
+			defaultBtns = [];
+
+			for (btnIndex in o.optDefaultBtn) {
+				btn = o.optDefaultBtn[btnIndex];
+				if (btn && btn.text) {
+					defaultBtns.push(btn);
+				}
+			}
+			buttons = defaultBtns.concat(buttons);
+
 
 			for (i = 0; i < rowsData.length; i++) {
 				rowData = rowsData[i];
@@ -551,7 +595,7 @@
 					// 否则会自动处理：如果是空值，则返回 '';
 					// 如果autoEncode设置为true，则需要escape html标签
 					if ($.isFunction(model.formatter)) {
-						cellData = model.formatter.call(null, o.data, rowData, i, cellData);
+						cellData = model.formatter.call(model, rowsData, rowData, i, cellData);
 					} else {
 						if (cellData) {
 							cellData = o.autoEncode ? htmlEncode(cellData) : cellData;
@@ -588,47 +632,24 @@
 
 				// 是否显示操作列
 				if (o.optCol) {
-					modOpt = '<a href="#" itemId="' + rowId + '" class="item-opt-modify">' + o.optModifyText + '</a>';
-        			delOpt = '<a href="#" itemId="' + rowId + '" class="item-opt-delete">' + o.optDeleteText + '</a>';
+					$optItem = $('<span class="item-opt"></span>');
 
-        			$modOpt = $(modOpt);
-        			$delOpt = $(delOpt);
-
-        			$optItem = $('<span class="item-opt"></span>');
-
-        			// 提供俩事件用于在修改或者删除的时候触发
+					// 缓存行数据到行上
         			tempData = {
 						'rowsData': rowsData,
 						'rowData': rowData,
 						'rowId': rowId
 					};
-        			$modOpt.data('tempData', tempData);
-        			$delOpt.data('tempData', tempData);
+					$row.data('rowData', tempData);
 
-        			$modOpt.click(function(e) {
-        				e.preventDefault();
+					// 循环生成操作按钮
+					for (btnIndex in buttons) {
+						btn = buttons[btnIndex];
 
-        				tempData = $(this).data('tempData');
-        				$table.trigger('optModifyClick', [
-        						tempData.rowsData,
-								tempData.rowData,
-								tempData.rowId,
-								this
-        					]);
-        			});
-        			$delOpt.click(function(e) {
-        				e.preventDefault();
+						$optItem.append(initBtnItem($table, $row, btn));
+					};
 
-        				tempData = $(this).data('tempData');
-        				$table.trigger('optDeleteClick', [
-        						tempData.rowsData,
-								tempData.rowData,
-								tempData.rowId,
-								this
-        					]);
-        			});
 
-        			$optItem.append($modOpt).append($delOpt);
         			$row.append($('<td></td>').append($optItem));
 				}
 
@@ -640,6 +661,54 @@
 		$table.append($tbody);
 
 		bindEvent2Table($table);
+	};
+
+	/**
+	 * 生成操作按钮，并绑定事件或方法
+	 * @param  {Object} $table
+	 * @param  {Object} $row
+	 * @param  {Object} btn
+	 * @return {Object}       操作按钮的jquery对象
+	 */
+	var initBtnItem = function($table, $row, btn) {
+		var a, href, cls, $btnItem, rowCache, rowDataArr;
+
+		rowCache = $row.data('rowData');
+
+		a = ['<a href="',
+				btn.href ? btn.href : '#',
+			'" itemId="',
+				rowCache.rowId,
+			'" class="opt-item ',
+				btn.cls ? btn.cls : '',
+			'">',
+			btn.text,
+			'</a>'].join('');
+		$btnItem = $(a);
+
+		rowDataArr = [
+					rowCache.rowsData,
+					rowCache.rowData,
+					rowCache.rowId,
+					$btnItem
+				];
+
+		// 如果存在事件定义则触发此事件
+		// 如果直接定义了action，则调用该函数
+		// 优先级是event高于action，也就是说二者定义一个就可以了
+		if (btn.event || btn.action) {
+			$btnItem.click(function(e) {
+				e.preventDefault();
+
+				if (btn.event) {
+					$table.trigger(btn.event, rowDataArr);
+				} else {
+					btn.action.apply(this, rowDataArr);
+				}
+
+			});
+		}
+		return $btnItem;
 	};
 
 	// 给table上的各个元素绑定事件

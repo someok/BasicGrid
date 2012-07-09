@@ -73,7 +73,23 @@
           }},
           {text: '列4', index: 'col4'},
           {text: '列5', index: 'col5'}
-        ]
+        ],
+
+        optDefaultBtn: {
+          deleteBtn: null
+        },
+
+        optButtons: [{
+          href: 'abc',
+          cls: 'item-opt-delete222',
+          text: '<i class="icon-remove"></i> 自定义删除</a>',
+          action: function(rowsData, rowData, rowId, el) {
+            console.log(rowsData)
+            console.log(rowData)
+            console.log(rowId);
+            console.log(el);
+          }
+        }]
       });
       //console.log(grid[0].tableId);
 
@@ -103,6 +119,14 @@
         console.log(rowsData);
         console.log(rowData);
         console.log(cellData);
+        console.log(el);
+      });
+
+      $('#demo').bind('optModifyClick', function(e, rowsData, rowData, rowId, el) {
+        console.log(e);
+        console.log(rowsData);
+        console.log(rowData);
+        console.log(rowId);
         console.log(el);
       });
       //console.log($demo.basicGrid('showTable'));
